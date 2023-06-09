@@ -1032,8 +1032,7 @@ op_db: List[OpInfo] = [
     OpInfo(
         "masked.softmax",
         method_variant=None,
-        dtypes=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypes=floating_types_and(torch.half, torch.bfloat16),
         sample_inputs_func=sample_inputs_masked_softmax,
         skips=(
             DecorateInfo(
@@ -1053,8 +1052,7 @@ op_db: List[OpInfo] = [
     OpInfo(
         "masked.log_softmax",
         method_variant=None,
-        dtypes=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypes=floating_types_and(torch.half, torch.bfloat16),
         sample_inputs_func=sample_inputs_masked_softmax,
         skips=(
             DecorateInfo(
@@ -1081,8 +1079,7 @@ op_db: List[OpInfo] = [
     OpInfo(
         "masked.softmin",
         method_variant=None,
-        dtypes=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypes=floating_types_and(torch.half, torch.bfloat16),
         sample_inputs_func=sample_inputs_masked_softmax,
         skips=(
             DecorateInfo(
