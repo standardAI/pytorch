@@ -749,30 +749,19 @@ def _post_backward_hook(
                 handle._use_unsharded_grad_views()
             return
 
-        # Wait for all ops in the current stream (e.g. gradient computation) to
-        # finish before reduce-scattering the gradient
-        state._post_backward_stream.wait_stream(state._device_handle.current_stream())
+        if (
+            not _low_precision_hook_enabled(state)
+            and flat_param.grad.dtype != handle._reduce_dtype
+            # If we are forcing full precision but communicating grads
+            # (i.e. model.eval() + full precision in eval was configured), don't downcast gradient.
+            and not handle._force_full_precision
+        ):
+            flat_param.grad.data = flat_param.grad.to(handle._reduce_dtype)
 
-        with state._device_handle.stream(state._post_backward_stream):
-            autograd_computed_grad = flat_param.grad.data
-            if (
-                not _low_precision_hook_enabled(state)
-                and flat_param.grad.dtype != handle._reduce_dtype
-                # If we are forcing full precision but communicating grads
-                # (i.e. model.eval() + full precision in eval was configured), don't downcast gradient.
-                and not handle._force_full_precision
-            ):
-                flat_param.grad.data = flat_param.grad.to(handle._reduce_dtype)
-            if handle.uses_sharded_strategy:
-                _reduce_grad(state, handle)
-            else:
-                _reduce_grad_no_shard(state, handle)
-            # Since the unsharded gradient is produced in the computation
-            # stream and consumed in the post-backward stream, inform the
-            # caching allocator (before it goes out of scope)
-            _no_dispatch_record_stream(
-                autograd_computed_grad, state._post_backward_stream
-            )
+        if handle.uses_sharded_strategy:
+            _reduce_grad(state, handle)
+        else:
+            _reduce_grad_no_shard(state, handle)
 
 
 def _post_backward_reshard(
@@ -828,40 +817,49 @@ def _reduce_grad(state: _FSDPState, handle: FlatParamHandle) -> None:
     # pass reduction, which is possible since the reduction is issued in a
     # separate stream and is async and would result in reducing the wrong
     # gradient.
+    # Note that the `padded_unsharded_grad` is created on the default stream so
+    # that we don't need to call record_stream.
     unsharded_grad = flat_param.grad.data
     flat_param.grad = None
     padded_unsharded_grad, new_sharded_grad = _get_reduce_scatter_tensors(
         state, unsharded_grad
     )
-    if state._comm_hook is None:  # default path
-        _div_if_needed(padded_unsharded_grad, state._gradient_predivide_factor)
-        dist.reduce_scatter_tensor(
-            new_sharded_grad,
-            padded_unsharded_grad,
-            group=state.process_group,
-        )
-        if uses_hybrid_sharded_strategy:
-            state._all_reduce_stream.wait_stream(state._post_backward_stream)
-            with state._device_handle.stream(state._all_reduce_stream):
-                # Since the new sharded gradient is produced in the post-
-                # backward stream and consumed in the all-reduce stream,
-                # inform the caching allocator
-                _no_dispatch_record_stream(new_sharded_grad, state._all_reduce_stream)
-                dist.all_reduce(new_sharded_grad, group=state._inter_node_pg)
-                _div_if_needed(new_sharded_grad, state._gradient_postdivide_factor)
-                grad_to_offload = _accumulate_sharded_grad(
-                    state, handle, new_sharded_grad
-                )
-                _post_reduce_grad_callback(state, handle, grad_to_offload)
-                return
-        _div_if_needed(new_sharded_grad, state._gradient_postdivide_factor)
-    else:
-        state._comm_hook(
-            state._comm_hook_state, padded_unsharded_grad, new_sharded_grad
-        )
-        # NOTE: HSDP variants do not support communication hook.
-    grad_to_offload = _accumulate_sharded_grad(state, handle, new_sharded_grad)
-    _post_reduce_grad_callback(state, handle, grad_to_offload)
+
+    # Wait for all ops in the current stream (e.g. gradient computation) to
+    # finish before reduce-scattering the gradient
+    state._post_backward_stream.wait_stream(state._device_handle.current_stream())
+
+    with state._device_handle.stream(state._post_backward_stream):
+        if state._comm_hook is None:  # default path
+            _div_if_needed(padded_unsharded_grad, state._gradient_predivide_factor)
+            dist.reduce_scatter_tensor(
+                new_sharded_grad,
+                padded_unsharded_grad,
+                group=state.process_group,
+            )
+            if uses_hybrid_sharded_strategy:
+                state._all_reduce_stream.wait_stream(state._post_backward_stream)
+                with state._device_handle.stream(state._all_reduce_stream):
+                    # Since the new sharded gradient is produced in the post-
+                    # backward stream and consumed in the all-reduce stream,
+                    # inform the caching allocator
+                    _no_dispatch_record_stream(new_sharded_grad, state._all_reduce_stream)
+                    dist.all_reduce(new_sharded_grad, group=state._inter_node_pg)
+                    _div_if_needed(new_sharded_grad, state._gradient_postdivide_factor)
+                    grad_to_offload = _accumulate_sharded_grad(
+                        state, handle, new_sharded_grad
+                    )
+                    _post_reduce_grad_callback(state, handle, grad_to_offload)
+                    return
+            _div_if_needed(new_sharded_grad, state._gradient_postdivide_factor)
+        else:
+            state._comm_hook(
+                state._comm_hook_state, padded_unsharded_grad, new_sharded_grad
+            )
+            # NOTE: HSDP variants do not support communication hook.
+
+        grad_to_offload = _accumulate_sharded_grad(state, handle, new_sharded_grad)
+        _post_reduce_grad_callback(state, handle, grad_to_offload)
 
 
 @no_type_check
@@ -912,19 +910,24 @@ def _reduce_grad_no_shard(state: _FSDPState, handle: FlatParamHandle) -> None:
     For no-shard, this runs gradient reduction (which directly covers any
     gradient accumulation implicitly) and the post-reduction callback.
     """
-    flat_param = handle.flat_param
-    if state._comm_hook is None:  # default path
-        _div_if_needed(flat_param.grad, state._gradient_predivide_factor)
-        dist.all_reduce(flat_param.grad, group=state.process_group)
-        _div_if_needed(flat_param.grad, state._gradient_postdivide_factor)
-    else:
-        state._comm_hook(state._comm_hook_state, flat_param.grad)
-    # For `NO_SHARD`, we can keep the low precision gradients by simply
-    # omitting the cast altogether
-    if not handle._keep_low_precision_grads:
-        _cast_grad_to_param_dtype(state, flat_param.grad, flat_param)
-    grad_to_offload = flat_param.grad.data
-    _post_reduce_grad_callback(state, handle, grad_to_offload)
+    # Wait for all ops in the current stream (e.g. gradient computation) to
+    # finish before reducing the gradient
+    state._post_backward_stream.wait_stream(state._device_handle.current_stream())
+
+    with state._device_handle.stream(state._post_backward_stream):
+        flat_param = handle.flat_param
+        if state._comm_hook is None:  # default path
+            _div_if_needed(flat_param.grad, state._gradient_predivide_factor)
+            dist.all_reduce(flat_param.grad, group=state.process_group)
+            _div_if_needed(flat_param.grad, state._gradient_postdivide_factor)
+        else:
+            state._comm_hook(state._comm_hook_state, flat_param.grad)
+        # For `NO_SHARD`, we can keep the low precision gradients by simply
+        # omitting the cast altogether
+        if not handle._keep_low_precision_grads:
+            _cast_grad_to_param_dtype(state, flat_param.grad, flat_param)
+        grad_to_offload = flat_param.grad.data
+        _post_reduce_grad_callback(state, handle, grad_to_offload)
 
 
 @no_type_check
