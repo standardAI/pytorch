@@ -764,6 +764,7 @@ def _post_backward_hook(
             _reduce_grad_no_shard(state, handle)
 
 
+@no_type_check
 def _post_backward_reshard(
     state: _FSDPState,
     handle: FlatParamHandle,
