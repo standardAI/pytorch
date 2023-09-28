@@ -849,7 +849,9 @@ def _reduce_grad(state: _FSDPState, handle: FlatParamHandle) -> None:
                     # Since the new sharded gradient is produced in the post-
                     # backward stream and consumed in the all-reduce stream,
                     # inform the caching allocator
-                    _no_dispatch_record_stream(new_sharded_grad, state._all_reduce_stream)
+                    _no_dispatch_record_stream(
+                        new_sharded_grad, state._all_reduce_stream
+                    )
                     dist.all_reduce(new_sharded_grad, group=state._inter_node_pg)
                     _div_if_needed(new_sharded_grad, state._gradient_postdivide_factor)
                     grad_to_offload = _accumulate_sharded_grad(
