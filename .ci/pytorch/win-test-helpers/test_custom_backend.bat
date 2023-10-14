@@ -2,6 +2,7 @@ call %SCRIPT_HELPERS_DIR%\setup_pytorch_env.bat
 
 git submodule update --init --recursive third_party/pybind11
 cd test\custom_backend
+git submodule update --init --recursive third_party/NVTX
 
 :: Build the custom backend library.
 mkdir build

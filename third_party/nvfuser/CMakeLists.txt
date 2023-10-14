@@ -175,6 +175,7 @@ if(BUILD_PYTHON)
 
   add_library(${NVFUSER} MODULE ${NVFUSER_PYTHON_SRCS})
   if(NOT USE_ROCM)
+    target_link_libraries(${NVFUSER} PRIVATE torch::nvtoolsext)
     target_compile_options(${NVFUSER} PRIVATE "-DTORCH_CUDA_BUILD_MAIN_LIB")
     # NB: This must be target_compile_definitions, not target_compile_options,
     # as the latter is not respected by nvcc
