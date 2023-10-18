@@ -3,9 +3,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from tools.stats.import_test_stats import get_disabled_tests, get_slow_tests
+from tools.testing.execute_test import ExecuteTest, ShardedTest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -42,19 +43,6 @@ if IS_ROCM and not IS_MEM_LEAK_CHECK:
         NUM_PROCS = 1
 
 
-class ShardedTest(NamedTuple):
-    name: str
-    shard: int
-    num_shards: int
-    time: Optional[float]  # In seconds
-
-    def __str__(self) -> str:
-        return f"{self.name} {self.shard}/{self.num_shards}"
-
-    def get_time(self) -> float:
-        return self.time or 0
-
-
 class ShardJob:
     def __init__(self) -> None:
         self.serial: List[ShardedTest] = []
@@ -73,11 +61,11 @@ class ShardJob:
 
 
 def get_with_pytest_shard(
-    tests: List[str], test_file_times: Dict[str, float]
+    tests: Sequence[ExecuteTest], test_file_times: Dict[str, float]
 ) -> List[ShardedTest]:
     sharded_tests: List[ShardedTest] = []
     for test in tests:
-        duration = test_file_times.get(test, None)
+        duration = test_file_times.get(test.test_file, None)
         if duration and duration > THRESHOLD:
             num_shards = math.ceil(duration / THRESHOLD)
             for i in range(num_shards):
@@ -91,18 +79,18 @@ def get_with_pytest_shard(
 
 def calculate_shards(
     num_shards: int,
-    tests: List[str],
+    tests: Sequence[ExecuteTest],
     test_file_times: Dict[str, float],
     must_serial: Optional[Callable[[str], bool]] = None,
     sort_by_time: bool = True,
 ) -> List[Tuple[float, List[ShardedTest]]]:
     must_serial = must_serial or (lambda x: True)
 
-    known_tests = tests
-    unknown_tests = []
+    known_tests: Sequence[ExecuteTest] = tests
+    unknown_tests: Sequence[ExecuteTest] = []
 
     if sort_by_time:
-        known_tests = [x for x in tests if x in test_file_times]
+        known_tests = [x for x in tests if x.test_file in test_file_times]
         unknown_tests = [x for x in tests if x not in known_tests]
 
     known_tests = get_with_pytest_shard(known_tests, test_file_times)
