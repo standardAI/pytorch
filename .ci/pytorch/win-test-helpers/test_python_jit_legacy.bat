@@ -4,6 +4,8 @@ echo Copying over test times file
 copy /Y "%PYTORCH_FINAL_PACKAGE_DIR_WIN%\.pytorch-test-times.json" "%PROJECT_DIR_WIN%"
 copy /Y "%PYTORCH_FINAL_PACKAGE_DIR_WIN%\.pytorch-test-file-ratings.json" "%PROJECT_DIR_WIN%"
 copy /Y "%PYTORCH_FINAL_PACKAGE_DIR_WIN%\.pytorch-test-class-ratings.json" "%PROJECT_DIR_WIN%"
+copy /Y "%PYTORCH_FINAL_PACKAGE_DIR_WIN%\.pytorch-td-heuristic-historical-edited-files.json" "%PROJECT_DIR_WIN%"
+copy /Y "%PYTORCH_FINAL_PACKAGE_DIR_WIN%\.pytorch-td-heuristic-profiling.json" "%PROJECT_DIR_WIN%"
 
 pushd test
 

@@ -120,3 +120,21 @@ def get_test_class_ratings(dirpath: str, filename: str) -> Optional[Dict[str, An
     except Exception:
         print("Couldn't download test class ratings file, not reordering...")
         return {}
+
+
+def get_td_heuristic_historial_edited_files_json(dirpath: str, filename: str) -> Optional[Dict[str, Any]]:
+    url = "https://raw.githubusercontent.com/pytorch/test-infra/generated-stats/stats/td_heuristic_historical_edited_files.json"
+    try:
+        return fetch_and_cache(dirpath, filename, url, lambda x: x)
+    except Exception:
+        print("Couldn't download td_heuristic_historical_edited_files.json, not reordering...")
+        return {}
+
+
+def get_td_heuristic_profiling_json(dirpath: str, filename: str) -> Optional[Dict[str, Any]]:
+    url = "https://raw.githubusercontent.com/pytorch/test-infra/generated-stats/stats/td_heuristic_profiling.json.json"
+    try:
+        return fetch_and_cache(dirpath, filename, url, lambda x: x)
+    except Exception:
+        print("Couldn't download td_heuristic_profiling.json not reordering...")
+        return {}

@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 
-from tools.stats.export_test_times import TEST_FILE_RATINGS_FILE
+from tools.stats.export_test_times import TD_HEURISTIC_HISTORICAL_EDITED_FILES
 
 from tools.testing.target_determination.heuristics.interface import (
     HeuristicInterface,
@@ -12,12 +12,12 @@ from tools.testing.target_determination.heuristics.utils import (
 )
 
 
-class CorrelatedWithHistoricalFailures(HeuristicInterface):
+class HistorialEditedFiles(HeuristicInterface):
     def __init__(self, **kwargs: Dict[str, Any]):
         super().__init__(**kwargs)
 
     def get_test_priorities(self, tests: List[str]) -> TestPrioritizations:
-        correlated_tests = get_correlated_tests(TEST_FILE_RATINGS_FILE)
+        correlated_tests = get_correlated_tests(TD_HEURISTIC_HISTORICAL_EDITED_FILES)
         relevant_correlated_tests = [test for test in correlated_tests if test in tests]
         test_rankings = TestPrioritizations(
             tests_being_ranked=tests, probable_relevance=relevant_correlated_tests

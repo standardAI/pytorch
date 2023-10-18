@@ -21,6 +21,8 @@ coverage.xml
 **/.pytorch-test-times.json
 **/.pytorch-test-file-ratings.json
 **/.pytorch-test-class-ratings.json
+**/.pytorch-td-heuristic-profiling.json
+**/.pytorch-td-heuristic-historical-edited-files.json
 */*.pyc
 */*.so*
 */**/__pycache__
