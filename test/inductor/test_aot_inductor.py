@@ -901,6 +901,34 @@ class AOTInductorTestsTemplate:
 
         self.check_model(Model(), (torch.empty(4, 1, 4, 4),))
 
+    def test_run_with_grad_enabled(self):
+        class Model(torch.nn.Module):
+            def forward(self, x, weight, bias):
+                return torch.ops.aten.addmm(bias, weight, x)
+
+        m = Model().to(device=self.device)
+        x = torch.rand(8, 8, device=self.device, requires_grad=True)
+        weight = torch.rand(8, 8, device=self.device, requires_grad=True)
+        bias = torch.rand(8, device=self.device, requires_grad=True)
+        example_inputs = (x, weight, bias)
+
+        expected = m(*example_inputs)
+        expected, _ = pytree.tree_flatten(expected)
+
+        # compiler under no_grad
+        with torch.no_grad():
+            so_path, exported = AOTInductorModelRunner.compile(
+                m, example_inputs
+            )
+
+        # run under grad enabled
+        self.assertTrue(torch.is_grad_enabled())
+
+        optimized = AOTInductorModelRunner.load(so_path, example_inputs)
+        actual = AOTInductorModelRunner.run_compiled(optimized, exported, example_inputs)
+        actual, _ = pytree.tree_flatten(actual)
+
+        self.assertTrue(same(actual, expected))
 
 class AOTInductorTestABICompatibleCpu(TestCase):
     device = "cpu"

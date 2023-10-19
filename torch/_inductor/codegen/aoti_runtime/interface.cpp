@@ -26,6 +26,17 @@
             std::to_string(actual_size));                         \
   } while (0)
 
+// AOTInductor uses at::addmm_out, which doesn't supports
+// arguments that requires gradient. For this reason, we
+// enforce no_grad context for run APIs.
+#define WITH_NO_GRAD(...)                               \
+  do {                                                  \
+    bool prev_mode = aoti_torch_grad_mode_is_enabled(); \
+    aoti_torch_grad_mode_set_enabled(false);            \
+    __VA_ARGS__                                         \
+    aoti_torch_grad_mode_set_enabled(prev_mode);        \
+  } while (0);
+
 extern "C" {
 
 AOTIRuntimeError AOTInductorModelContainerCreate(
@@ -79,11 +90,13 @@ AOTIRuntimeError AOTInductorModelContainerRun(
 
   auto stream = reinterpret_cast<torch::aot_inductor::DeviceStreamType>(stream_handle);
   CONVERT_EXCEPTION_TO_ERROR_CODE({
-    container->run(
-        input_handles,
-        output_handles,
-        stream,
-        proxy_executor_handle);
+    WITH_NO_GRAD({
+      container->run(
+          input_handles,
+          output_handles,
+          stream,
+          proxy_executor_handle);
+    })
   })
 }
 
@@ -154,11 +167,13 @@ AOTIRuntimeError AOTInductorModelRun(
     AtenTensorHandle* output_handles) {
   auto model = reinterpret_cast<torch::aot_inductor::AOTInductorModel*>(model_handle);
   CONVERT_EXCEPTION_TO_ERROR_CODE({
+    WITH_NO_GRAD({
       model->run_impl(
           input_handles,
           output_handles,
           (torch::aot_inductor::DeviceStreamType)nullptr,
           nullptr);
+    })
   })
 }
 
