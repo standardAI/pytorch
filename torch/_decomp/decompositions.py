@@ -3241,6 +3241,77 @@ def upsample_bilinear2d(
     return result
 
 
+@register_decomposition(aten.replication_pad2d.default)
+@aten.replication_pad2d.default.py_impl(DispatchKey.Autograd)
+@pw_cast_for_opmath
+def replication_pad2d(input: Tensor, padding: List[int]) -> Tensor:
+    result_size = list(input.size())
+    padding_left = padding[0]
+    padding_right = padding[1]
+    padding_top = padding[2]
+    padding_bottom = padding[3]
+    result_size[-1] += padding_left + padding_right
+    result_size[-2] += padding_top + padding_bottom
+    result = torch.empty(result_size, device=input.device, dtype=input.dtype)
+
+    if padding_left < 0:
+        input = input[..., -padding_left:]
+        padding_left = 0
+
+    if padding_right < 0:
+        input = input[..., :padding_right]
+        padding_right = 0
+
+    if padding_top < 0:
+        input = input[..., -padding_top:, :]
+        padding_top = 0
+
+    if padding_bottom < 0:
+        input = input[..., :padding_bottom, :]
+        padding_bottom = 0
+
+    # Middle
+    result[
+        ...,
+        padding_top : padding_top + input.size(-2),
+        padding_left : padding_left + input.size(-1),
+    ] = input
+
+    # Top left corner
+    if padding_top > 0 and padding_left > 0:
+        result[..., :padding_top, :padding_left] = input[..., [0], :][..., [0]]
+
+    # Top right corner
+    if padding_top > 0 and padding_right > 0:
+        result[..., :padding_top, -padding_right:] = input[..., [0], :][..., [-1]]
+
+    # Bottom left corner
+    if padding_bottom > 0 and padding_left > 0:
+        result[..., -padding_bottom:, :padding_left] = input[..., [-1], :][..., [0]]
+
+    # Bottom right corner
+    if padding_bottom > 0 and padding_right > 0:
+        result[..., -padding_bottom:, -padding_right:] = input[..., [-1], :][..., [-1]]
+
+    # Top
+    if padding_top > 0:
+        result[..., :padding_top, padding_left:-padding_right] = input[..., [0], :]
+
+    # Bottom
+    if padding_bottom > 0:
+        result[..., -padding_bottom:, padding_left:-padding_right] = input[..., [-1], :]
+
+    # Left
+    if padding_left > 0:
+        result[..., padding_top:-padding_bottom, :padding_left] = input[..., [0]]
+
+    # Right
+    if padding_right > 0:
+        result[..., padding_top:-padding_bottom, -padding_right:] = input[..., [-1]]
+
+    return result
+
+
 # We should be applying decompositions after all transformations
 @register_decomposition(aten.is_same_size.default)
 def is_same_size(a: Tensor, b: Tensor) -> bool:

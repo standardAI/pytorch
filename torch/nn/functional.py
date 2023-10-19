@@ -4406,8 +4406,7 @@ def affine_grid(theta: Tensor, size: List[int], align_corners: Optional[bool] = 
     return torch.affine_grid_generator(theta, size, align_corners)
 
 
-pad = _add_docstr(
-    torch._C._nn.pad,
+def pad(input: Tensor, padding: List[int], mode: str = "constant", value: Optional[float] = None) -> Tensor:
     r"""
 pad(input, pad, mode="constant", value=None) -> Tensor
 
@@ -4468,7 +4467,21 @@ Examples::
     >>> print(out.size())
     torch.Size([3, 9, 7, 3])
 
-""")
+"""
+    if not torch.jit.is_scripting():
+        if torch.are_deterministic_algorithms_enabled() and input.is_cuda:
+            if len(padding) == 4 and (input.dim() == 3 or input.dim() == 4) and mode == 'replicate':
+                torch._check(
+                    value is None,
+                    lambda: 'Padding mode "replicate" doesn\'t take in value argument')
+                # Use slow decomp whose backward will be in terms of index_put.
+                # importlib is required because the import cannot be top level
+                # (cycle) and cannot be nested (TS doesn't support)
+                return importlib.import_module('torch._decomp.decompositions').replication_pad2d(
+                    input, padding
+                )
+    return torch._C._nn.pad(input, padding, mode, value)
+
 # TODO: Fix via https://github.com/pytorch/pytorch/issues/75798
 pad.__module__ = "torch.nn.functional"
 
