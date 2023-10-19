@@ -144,26 +144,6 @@ except ImportError:
     pass
 
 
-torch_ctx_manager_classes = {
-    torch.no_grad,
-    torch.enable_grad,
-    torch.set_grad_enabled,
-    torch.inference_mode,
-    torch.cuda.streams.Stream,
-    torch.amp.autocast_mode.autocast,
-    torch.cuda.amp.autocast,
-    torch.cpu.amp.autocast,
-    torch.profiler.profile,
-    torch.profiler.record_function,
-    torch.autograd.profiler.profile,
-    torch.autograd.profiler.record_function,
-}
-
-
-def is_torch_ctx_manager_class(obj):
-    return obj in torch_ctx_manager_classes
-
-
 class TorchCtxManagerClassVariable(VariableTracker):
     def __init__(self, value, **kwargs):
         super().__init__(**kwargs)

@@ -1058,6 +1058,7 @@ class BuiltinVariable(VariableTracker):
     def call_getattr(
         self, tx, obj: VariableTracker, name_var: VariableTracker, default=None
     ):
+        from ..allow_skip_list import is_torch_ctx_manager_class
         from . import (
             ConstantVariable,
             GetAttrVariable,
@@ -1067,7 +1068,6 @@ class BuiltinVariable(VariableTracker):
             UserFunctionVariable,
         )
         from .builder import SourcelessBuilder, VariableBuilder
-        from .torch import is_torch_ctx_manager_class
 
         options = VariableTracker.propagate(self, obj, name_var)
         guards = options["guards"]
