@@ -208,6 +208,15 @@ class TorchCtxManagerClassVariable(VariableTracker):
         ):
             log.warning("Profiler function %s will be ignored", self.value)
             return NullContextVariable(**options)
+        elif self.value is torch._C.DisableTorchFunctionSubclass:
+            assert not (args or kwargs)
+            return TorchFunctionDisableVariable.create(tx, **options)
+        elif self.value is torch.cuda.stream:
+            log.warning(
+                "torch.cuda.stream() not fully supported, streams may be ignored"
+            )
+            assert len(args) == 1
+            return CUDAStreamContextVariable.create(tx, args[0], **options)
 
 
 class TorchVariable(VariableTracker):
@@ -406,15 +415,6 @@ class TorchVariable(VariableTracker):
             return ConstantVariable.create(
                 tx.output.torch_function_enabled, **options
             ).add_guards(TorchFunctionDisableVariable._guards_singleton)
-        elif self.value is torch._C.DisableTorchFunctionSubclass:
-            assert not (args or kwargs)
-            return TorchFunctionDisableVariable.create(tx, **options)
-        elif self.value is torch.cuda.stream:
-            log.warning(
-                "torch.cuda.stream() not fully supported, streams may be ignored"
-            )
-            assert len(args) == 1
-            return CUDAStreamContextVariable.create(tx, args[0], **options)
         elif self.value in (
             torch.overrides.has_torch_function_variadic,
             torch.overrides.has_torch_function_unary,
