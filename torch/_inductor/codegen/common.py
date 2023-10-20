@@ -428,12 +428,10 @@ class DeferredLine(DeferredLineBase):
     def __call__(self):
         # V.kernel may be null since this method may be called for the
         # wrapper codegen where there is no specific kernel.
-        if (
-            self.name
-            not in (
-                V.graph.removed_buffers | getattr(V.kernel, "removed_buffers", set())
-            )
-            and self.name not in V.graph.inplaced_to_remove
+        if self.name not in (
+            V.graph.removed_buffers | getattr(V.kernel, "removed_buffers", set())
+        ) and self.name not in (
+            V.graph.inplaced_to_remove | getattr(V.kernel, "inplaced_to_remove", set())
         ):
             return self.line
         return None
@@ -635,7 +633,16 @@ class KernelArgs:
             if self._buffer_is_marked_removed(inplaced):
                 continue
             for other in inplaced.other_names:
-                if other in V.graph.inplaced_to_remove:
+                # For cpu codegen, aliases method may be called in CppScheduling.flush
+                # where we can no longer access the kernel object. It does not matter
+                # that much since the inplaced_to_remove object recorded in the
+                # kernel object should have already being merged to
+                # V.graph.inplaced_to_remove.
+                # We just need handle the case that V.kernel is null gracefully here.
+                if other in (
+                    V.graph.inplaced_to_remove
+                    | getattr(V.kernel, "inplaced_to_remove", set())
+                ):
                     continue
                 if other in self.input_buffers:
                     yield self.input_buffers[other], inplaced.inner_name
@@ -830,6 +837,8 @@ class Kernel(CodeGen):
         self.node_to_bounds: Optional[Dict[torch.fx.Node, ValueRanges]] = None
 
         self.removed_buffers = set()
+        self.inplaced_to_remove = set()
+
         # key: the buffer to write
         # value: the buffer to read and whose memory can be reused for
         #   the buffer specified by key
