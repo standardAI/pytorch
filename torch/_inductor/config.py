@@ -183,6 +183,9 @@ benchmark_kernel = os.environ.get("TORCHINDUCTOR_BENCHMARK_KERNEL", "0") == "1"
 # Enable constant and index_expr folding
 constant_and_index_propagation = True
 
+# assert that indirect indexing does not read / write out of bounds
+assert_indirect_indexing = True
+
 
 def is_fbcode():
     return not hasattr(torch.version, "git_version")
@@ -378,9 +381,6 @@ class triton:
     # should we stop a fusion to allow better tiling?
     tiling_prevents_pointwise_fusion = True
     tiling_prevents_reduction_fusion = True
-
-    # assert that indirect indexing does not read / write out of bounds
-    assert_indirect_indexing = True
 
     # should we give different names to kernels
     # Note: This is orthogonal to descriptive_names - this is deciding whether
