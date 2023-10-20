@@ -128,7 +128,7 @@
 [submodule "third_party/kineto"]
     path = third_party/kineto
     url = https://github.com/mantaionut/kineto
-	branch = fix_CUPTI_Windows
+    branch = fix_CUPTI_Windows
 [submodule "third_party/pocketfft"]
 	path = third_party/pocketfft
 	url = https://github.com/mreineck/pocketfft
