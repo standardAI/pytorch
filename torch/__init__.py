@@ -95,7 +95,7 @@ if sys.platform == 'win32':
         cupti_path = os.path.join(cuda_base, 'extras', 'CUPTI', 'lib64')
     else:
         cuda_path = ''
-        cupti_path =''
+        cupti_path = ''
 
     dll_paths.extend(filter(os.path.exists, [nvtoolsext_dll_path, cuda_path, cupti_path]))
 
