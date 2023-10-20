@@ -6,7 +6,7 @@ import logging
 import os
 import pprint
 import textwrap
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 
 import sympy
 
@@ -617,7 +617,12 @@ class NopKernelSchedulerNode(BaseSchedulerNode):
 
 
 class SchedulerNode(BaseSchedulerNode):
-    def __init__(self, scheduler: "Scheduler", node: ir.ComputedBuffer, group_fn):
+    def __init__(
+        self,
+        scheduler: "Scheduler",
+        node: Union[ir.ComputedBuffer, ir.TemplateBuffer],
+        group_fn,
+    ):
         super().__init__(scheduler, node)
         (
             self._sizes,
@@ -823,6 +828,13 @@ class FusedSchedulerNode(BaseSchedulerNode):
     def is_template(self):
         return any(x.is_template() for x in self.snodes)
 
+    @cache_on_self
+    def get_template_node(self):
+        for node in self.snodes:
+            if node.is_template():
+                return node
+        return None
+
     def get_device(self):
         return self.group[0]
 
@@ -887,7 +899,6 @@ class ForeachKernelSchedulerNode(FusedSchedulerNode):
         for rd in consumer.read_writes.reads:
             if rd.name in self.name_to_node:
                 return self.name_to_node[rd.name]
-
         return None
 
     @classmethod
@@ -1190,6 +1201,7 @@ class Scheduler:
         assert (
             node.origins is not None
         ), "All nodes passed to scheduling must have an origin"
+
         if node.is_no_op():
             return NopKernelSchedulerNode(self, node)
         elif isinstance(node, (ir.ComputedBuffer, ir.TemplateBuffer)):
@@ -1699,7 +1711,11 @@ class Scheduler:
         ):
             fusion_log.debug("cannot fuse (7): no shared data")
             return False  # heuristic not needed for correctness
-
+        # Check for node specific epilogue fusion rules
+        if hasattr(node1, "can_fuse_epilogue") and node1.can_fuse_epilogue(node2):
+            # we don't test it the other way around, since node1<=node2 in topological order
+            # and epilogue fusion is only possible if node1<node2
+            return True
         if (
             not node1.is_foreach()
             and not node2.is_foreach()
@@ -1989,12 +2005,7 @@ class Scheduler:
 
             if node.is_template():
                 node, *epilogue = node.get_nodes()
-                if isinstance(node.node, ir.CUDATemplateBuffer):
-                    from .codegen.cuda.cuda_scheduling import CUDAScheduling
-
-                    CUDAScheduling(self).codegen_template(node, epilogue)
-                else:
-                    self.get_backend(device).codegen_template(node, epilogue)
+                self.get_backend(device).codegen_template(node, epilogue)
             elif node.is_extern():
                 self.codegen_extern_call(node)
             elif node.is_foreach():

@@ -38,7 +38,18 @@ from pathlib import Path
 from threading import Thread
 from time import sleep, time
 from types import ModuleType
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, Union
+from typing import (
+    Any,
+    Callable,
+    cast,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TYPE_CHECKING,
+    Union,
+)
 
 import torch
 
@@ -890,7 +901,7 @@ class InvalidVecISA(VecISA):
     _bit_width = 0
     _macro = ""
     _arch_flags = ""
-    _dtype_nelements = {}
+    _dtype_nelements = {}  # type: ignore[var-annotated]
 
     def __str__(self) -> str:
         return "INVALID_VEC_ISA"
@@ -1833,27 +1844,30 @@ def cuda_compile_command(
     include_paths = _cutlass_include_paths()
     cuda_lib_options = _cuda_lib_options()
     nvcc_host_compiler_options = _nvcc_host_compiler_options()
-    nvcc_compiler_options = _nvcc_compiler_options()
-    options = (
-        nvcc_compiler_options
-        + [
-            f"-Xcompiler {opt}" if "=" in opt else f"-Xcompiler={opt}"
-            for opt in nvcc_host_compiler_options
-        ]
-        + ["-I" + path for path in include_paths]
-        + cuda_lib_options
-    )
+    options = list(_nvcc_compiler_options())
+    for opt in nvcc_host_compiler_options:
+        if "=" in opt:
+            options.append("-Xcompiler")
+            options.append(opt)
+        else:
+            options.append(f"-Xcompiler={opt}")
+    options.extend(["-I" + path for path in include_paths])
+    options.extend(cuda_lib_options)
     src_file = " ".join(src_files)
-    res = ""
     if dst_file_ext == "o":
-        res = f"{_cuda_compiler()} {' '.join(options)} -c -o {dst_file} {src_file}"
+        res = cast(
+            List[str], [_cuda_compiler(), *options, "-c", "-o", dst_file, src_file]
+        )
     elif dst_file_ext == "so":
         options.append("-shared")
-        res = f"{_cuda_compiler()} {' '.join(options)} -o {dst_file} {src_file}"
+        res = cast(List[str], [_cuda_compiler(), *options, "-o", dst_file, src_file])
     else:
         raise NotImplementedError(f"Unsupported output file suffix {dst_file_ext}!")
-    log.debug("CUDA command: %s", res)
-    return res
+    cmd = shlex.join(res)
+    if cmd[0] == '"' and cmd[-1] == '"':
+        cmd = cmd[1:-1]
+    log.debug("CUDA command: %s", cmd)
+    return cmd
 
 
 class DLLWrapper:
@@ -1958,9 +1972,10 @@ class CUDACodeCache:
             with lock:
                 output_path = input_path[: -len(cls._SOURCE_CODE_SUFFIX)] + dst_file_ext
                 if not os.path.exists(output_path):
-                    cmd = cuda_compile_command(
+                    cmdstr = cuda_compile_command(
                         [input_path], output_path, dst_file_ext
-                    ).split(" ")
+                    )
+                    cmd = shlex.split(cmdstr)
                     try:
                         subprocess.check_output(
                             cmd, stderr=subprocess.STDOUT, env=os.environ
@@ -2092,7 +2107,7 @@ class AsyncCompile:
         # doesn't run, and we need to register our own handler.
         # exitpriority has to be high, because another one of the finalizers will
         # kill the worker thread that sends the shutdown message to the workers...
-        multiprocessing.util.Finalize(None, pool.shutdown, exitpriority=sys.maxsize)
+        multiprocessing.util.Finalize(None, pool.shutdown, exitpriority=sys.maxsize)  # type: ignore[attr-defined]
         return pool
 
     @classmethod
@@ -2117,12 +2132,12 @@ class AsyncCompile:
 
         # We force them to start here with some YOLOing of the internal methods.
         if hasattr(pool, "_start_queue_management_thread"):
-            pool._start_queue_management_thread()
+            pool._start_queue_management_thread()  # type: ignore[attr-defined]
         else:
             for _ in range(config.compile_threads):
                 pool._adjust_process_count()
             if hasattr(pool, "_start_executor_manager_thread"):
-                pool._start_executor_manager_thread()
+                pool._start_executor_manager_thread()  # type: ignore[attr-defined]
         _compile_end()
 
     @classmethod
