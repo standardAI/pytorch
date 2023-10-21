@@ -459,7 +459,7 @@ class GraphModuleSerializer:
         return serialized_args
 
     def serialize_inputs(
-        self, target: torch._ops.OpOverload, args, kwargs=None, include_default_values=True
+        self, target: torch._ops.OpOverload, args, kwargs=None, include_default_values=False
     ) -> List[NamedArgument]:
         assert isinstance(target, torch._ops.OpOverload)
         kwargs = kwargs or {}
