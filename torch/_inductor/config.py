@@ -204,6 +204,8 @@ def is_fbcode():
 # constant folding on the joint graph
 joint_graph_constant_folding = True
 
+joint_graph_complex_view_folding = True
+
 # Enable indirect_indexing asserts for decompositions and lowerings
 debug_index_asserts = False
 

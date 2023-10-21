@@ -112,6 +112,66 @@ def remove_no_ops(
             replace_no_op(node, 0)
 
 
+@torch.utils._python_dispatch._disable_current_modes()
+def remove_redundant_complex_views(gm: torch.fx.GraphModule):
+    """
+    Value number and reuse complex views
+    """
+
+    aten = torch.ops.aten
+    graph = gm.graph
+    aliases = {}  # a dictionary from complex to floats
+
+    for node in graph.nodes:
+        if node.op != "call_function":
+            continue
+
+        if node.target != aten.view.dtype:
+            continue
+
+        src = node.args[0]
+        from_type = src.meta["val"].dtype
+        to_type = node.args[1]
+
+        # Only handle complex views
+        if not from_type.is_complex and not to_type.is_complex:
+            continue
+
+        need_new_alias = True
+        existing_aliases = aliases.get(src)
+
+        if existing_aliases:
+            # Replace the view with the existing aliases if available
+            # search dtype in existing aliases
+            for alias in existing_aliases:
+                if alias.meta["val"].dtype == to_type:
+                    node.replace_all_uses_with(alias)
+                    alias.meta.update(node.meta)
+                    graph.erase_node(node)
+                    need_new_alias = False
+                    break
+        else:
+            existing_aliases = [src]
+            aliases[src] = existing_aliases
+
+        if need_new_alias:
+            # register the new alias
+            existing_aliases.append(node)
+            aliases[node] = existing_aliases
+
+    # clean up unused aliases
+    while True:
+        unused_aliases = []
+        for alias in aliases:
+            if not alias.users:
+                unused_aliases.append(alias)
+        if len(unused_aliases) == 0:
+            break
+        for unused in unused_aliases:
+            aliases.pop(unused)
+            graph.erase_node(unused)
+
+
 class UniformValueConstantFolder(ConstantFolder):
     """
     Runs constant folding and replaces tensors that have a unifrom value
@@ -202,6 +262,7 @@ def constant_fold_uniform_value(gm: torch.fx.GraphModule):
                 ones.add(new_node)
 
     remove_no_ops(gm, zeros, ones)
+    remove_redundant_complex_views(gm)
 
 
 def joint_graph_passes(graph: torch.fx.GraphModule):
