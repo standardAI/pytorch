@@ -1,3 +1,4 @@
+import inspect
 from typing import Dict, List
 
 from torch.overrides import _get_overloaded_args, get_default_nowrap_functions
@@ -43,6 +44,24 @@ banned_attrs = [
 
 def is_torch_function_user_object(obj):
     return hasattr(obj, "__torch_function__")
+
+
+def _is_attr_overidden(tx, var, name):
+    import torch
+
+    try:
+        attr_val = inspect.getattr_static(var.python_type(), name)
+        return attr_val != getattr(torch.Tensor, name)
+    except AttributeError:
+        pass
+
+    try:
+        var.dynamic_getattr(tx, name)
+        return True
+    except NotImplementedError:
+        pass
+
+    return False
 
 
 def call_torch_function(
@@ -137,6 +156,36 @@ class TensorWithTFOverrideVariable(TensorVariable):
 
     def global_mangled_class_name(self):
         return f"__subclass_{self.class_type.__name__}_{id(self.class_type)}"
+
+    def var_getattr(self, tx, name):
+        # [Note: __torch_function__] We currently only support attributes that are defined on
+        # base tensors, custom attribute accesses will graph break. We will need to track setting
+        # attrs on this object.
+        import torch
+        from .builder import SourcelessBuilder
+
+        if name in banned_attrs:
+            unimplemented(
+                f"Accessing {name} on a tensor subclass with a __torch_function__ override is not supported"
+            )
+
+        if _is_attr_overidden(tx, self, name):
+            unimplemented(
+                f"Accessing overidden method/attribute {name} on a tensor"
+                " subclass with a __torch_function__ override is not supported"
+            )
+
+        if tx.output.torch_function_enabled:
+            get_fn = SourcelessBuilder()(tx, getattr(torch.Tensor, name).__get__)
+            return self.call_torch_function(
+                tx,
+                get_fn,
+                TupleVariable([self.subclass_type_var()]),
+                [self],
+                {},
+            )
+        else:
+            return super().var_getattr(tx, name)
 
     def call_torch_function(self, tx, fn, types, args, kwargs):
         return call_torch_function(
