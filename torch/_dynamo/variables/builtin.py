@@ -630,7 +630,7 @@ class BuiltinVariable(VariableTracker):
             try:
                 result = handler(tx, *args, **kwargs)
                 if result is not None:
-                    return result.add_options(options)
+                    return result
             except Unsupported as exc:
                 if not has_constant_handler:
                     raise
@@ -839,12 +839,12 @@ class BuiltinVariable(VariableTracker):
                 return cls(
                     list(obj.unpack_var_sequence(tx)),
                     mutable_local=MutableLocal(),
-                ).add_options(self, obj)
+                )
 
             return cls(
                 list(obj.unpack_var_sequence(tx)),
                 mutable_local=MutableLocal(),
-            ).add_options(self, obj)
+            )
 
     call_iter = _call_iter_tuple_list
     call_tuple = _call_iter_tuple_list
@@ -881,18 +881,16 @@ class BuiltinVariable(VariableTracker):
         if isinstance(
             arg, (variables.UserDefinedClassVariable, BaseUserFunctionVariable)
         ):
-            return variables.ConstantVariable.create(True).add_options(arg)
+            return variables.ConstantVariable.create(True)
 
     @staticmethod
     def call_dict_helper(tx, user_cls, arg, **options):
         if arg is None or isinstance(arg, dict):
             return ConstDictVariable(
                 arg if arg is not None else {}, user_cls, mutable_local=MutableLocal()
-            ).add_options(options)
+            )
         elif isinstance(arg, variables.ConstDictVariable):
-            return arg.clone(
-                user_cls=user_cls, mutable_local=MutableLocal()
-            ).add_options(options)
+            return arg.clone(user_cls=user_cls, mutable_local=MutableLocal())
         elif isinstance(
             arg,
             (
@@ -906,9 +904,7 @@ class BuiltinVariable(VariableTracker):
                 k = x.unpack_var_sequence(tx)[0].as_python_constant()
                 v = x.unpack_var_sequence(tx)[1]
                 items.update({k: v})
-            return ConstDictVariable(
-                items, user_cls, mutable_local=MutableLocal()
-            ).add_options(options)
+            return ConstDictVariable(items, user_cls, mutable_local=MutableLocal())
         else:
             raise AssertionError("call_dict_helper with illegal arg")
 
@@ -1024,17 +1020,17 @@ class BuiltinVariable(VariableTracker):
             tx.replace_all(arg, next_iter)
             return val
         elif isinstance(arg, variables.BaseListVariable):
-            return arg.items[0].add_options(self, arg)
+            return arg.items[0]
 
     def call_hasattr(self, tx, obj, attr):
         if attr.is_python_constant():
             name = attr.as_python_constant()
-            return obj.call_hasattr(tx, name).add_options(self, obj, attr)
+            return obj.call_hasattr(tx, name)
 
     def call_map(self, tx, fn, seq):
         if seq.has_unpack_var_sequence(tx):
             items = [fn.call_function(tx, [x], {}) for x in seq.unpack_var_sequence(tx)]
-            return variables.TupleVariable(items).add_options(self, fn, seq)
+            return variables.TupleVariable(items)
 
     def call_sum(self, tx, seq, **kwargs):
         # Special case for sum on tuple of floats and ints
@@ -1060,7 +1056,7 @@ class BuiltinVariable(VariableTracker):
                 [
                     BuiltinVariable(operator.add),
                     variables.TupleVariable(items),
-                    variables.ConstantVariable.create(0).add_options(self, seq),
+                    variables.ConstantVariable.create(0),
                 ],
                 {},
             )
@@ -1097,7 +1093,7 @@ class BuiltinVariable(VariableTracker):
         if tx.output.side_effects.is_attribute_mutation(obj):
             try:
                 # re-read a pending side effect?
-                return tx.output.side_effects.load_attr(obj, name).add_options(options)
+                return tx.output.side_effects.load_attr(obj, name)
             except KeyError:
                 pass
 
@@ -1135,7 +1131,7 @@ class BuiltinVariable(VariableTracker):
                 pass
 
         if isinstance(obj, variables.NNModuleVariable):
-            return obj.var_getattr(tx, name).add_options(options)
+            return obj.var_getattr(tx, name)
         elif isinstance(obj, variables.TensorVariable) and name == "grad":
             if source:
                 # We are going to be raising this tensor as grapharg. So, ensure
@@ -1145,9 +1141,7 @@ class BuiltinVariable(VariableTracker):
                 for grapharg in tx.output.graphargs:
                     if grapharg.source == source.base:
                         example_value = grapharg.example.grad
-                        return VariableBuilder(tx, source)(example_value).add_options(
-                            options
-                        )
+                        return VariableBuilder(tx, source)(example_value)
                 unimplemented("tensor grad")
             else:
                 unimplemented("tensor grad")
@@ -1162,9 +1156,7 @@ class BuiltinVariable(VariableTracker):
             ),
         ):
             try:
-                return (
-                    obj.var_getattr(tx, name).clone(source=source).add_options(options)
-                )
+                return obj.var_getattr(tx, name).clone(source=source)
             except NotImplementedError:
                 return GetAttrVariable(obj, name, **options)
         elif isinstance(obj, TorchVariable):
@@ -1191,9 +1183,7 @@ class BuiltinVariable(VariableTracker):
             )
         else:
             try:
-                return (
-                    obj.var_getattr(tx, name).clone(source=source).add_options(options)
-                )
+                return obj.var_getattr(tx, name).clone(source=source)
             except NotImplementedError:
                 return GetAttrVariable(obj, name, **options)
 
@@ -1216,7 +1206,7 @@ class BuiltinVariable(VariableTracker):
             and name_var.is_python_constant()
         ):
             tx.output.side_effects.store_attr(obj, name_var.as_python_constant(), val)
-            return val.add_options(self, obj, name_var)
+            return val
         elif isinstance(obj, variables.UserDefinedObjectVariable):
             unimplemented(
                 f"setattr(UserDefinedObjectVariable) {type(obj.value).__setattr__}"
@@ -1280,12 +1270,10 @@ class BuiltinVariable(VariableTracker):
             py_type = None
 
         if istype(obj, variables.TupleVariable):
-            return BuiltinVariable(py_type).add_options(self, obj)
+            return BuiltinVariable(py_type)
 
         if py_type is not None and obj.source:
-            return VariableBuilder(tx, TypeSource(obj.source))(py_type).add_options(
-                self, obj
-            )
+            return VariableBuilder(tx, TypeSource(obj.source))(py_type)
 
         if py_type is not None:
             return ConstantVariable.create(py_type)
@@ -1534,7 +1522,7 @@ class BuiltinVariable(VariableTracker):
             )
 
         if isinstance(a, ListVariable):
-            return ConstantVariable.create(len(a.items) == 0).add_options(self, a)
+            return ConstantVariable.create(len(a.items) == 0)
 
         return None
 
