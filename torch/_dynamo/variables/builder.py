@@ -65,6 +65,7 @@ from ..utils import (
     get_static_address_type,
     global_key_name,
     is_namedtuple,
+    is_torch_function_object,
     is_typing,
     is_utils_checkpoint,
     istype,
@@ -799,8 +800,13 @@ class VariableBuilder:
                 guards=make_guards(GuardBuilder.FUNCTION_MATCH),
             )
         else:
+            torch_function_fn = None
+            if is_torch_function_object(value):
+                torch_function_fn = build_torch_function_fn(self.tx, value, self.source)
+
             result = UserDefinedObjectVariable(
                 value,
+                torch_function_fn=torch_function_fn,
                 source=self.source,
                 guards=self.make_guards(GuardBuilder.TYPE_MATCH),
             )
