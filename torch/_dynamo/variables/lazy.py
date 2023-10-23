@@ -46,7 +46,6 @@ class LazyVariableTracker(VariableTracker):
             tx = InstructionTranslator.current_tx()
             self.mutable_local.vt = VariableBuilder(tx, self.source)(self._value)
             self._value = None
-            tx.output.guards.update(self.mutable_local.vt.guards)
         return self.mutable_local.vt.add_options(self)
 
     def unwrap(self):
@@ -73,8 +72,6 @@ class LazyVariableTracker(VariableTracker):
         return getattr(self.realize(), item)
 
     # most methods are auto-generated below, these are the ones we want to exclude
-    add_guards = VariableTracker.add_guards
-    add_guard = VariableTracker.add_guard
     add_options = VariableTracker.add_options
     _aggregate_mutables = VariableTracker._aggregate_mutables
     apply = VariableTracker.apply
